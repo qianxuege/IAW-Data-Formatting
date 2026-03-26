@@ -176,6 +176,8 @@ def _cell(df: pd.DataFrame, row_idx: int, col: str | None) -> str:
     v = df.iloc[row_idx][col]
     if pd.isna(v):
         return ""
+    if isinstance(v, float) and v == int(v):
+        return str(int(v))
     return str(v).strip()
 
 
