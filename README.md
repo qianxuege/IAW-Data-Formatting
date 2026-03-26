@@ -57,7 +57,17 @@ With the venv activated:
 python merge_grant_contacts.py path/to/grants.xlsx path/to/contacts.xlsx -o path/to/output.xlsx
 ```
 
+<!-- python merge_grant_contacts.py Input/foundation_corporate_grants.xlsx Input/contact_information.xlsx --debug-headers -o merged_export.xlsx -->
+
+<!-- python merge_grant_contacts.py Input/government_grants.xlsx Input/contact_information.xlsx --debug-headers -o merged_export.xlsx -->
+
 If you omit `-o`, the script writes `merged_export.xlsx` in the current working directory.
+
+To print all detected headers in both input files (debug mode), add:
+
+```bash
+python merge_grant_contacts.py path/to/grants.xlsx path/to/contacts.xlsx --debug-headers -o path/to/output.xlsx
+```
 
 ### Input expectations
 

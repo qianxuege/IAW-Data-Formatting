@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from openpyxl import load_workbook
 
 # Output column order (all included; unfilled cells are empty strings)
 OUTPUT_COLUMNS = [
@@ -122,6 +123,15 @@ def load_contacts(path: Path) -> pd.DataFrame:
     return df
 
 
+def print_headers(grants: pd.DataFrame, contacts: pd.DataFrame) -> None:
+    print("=== Grants file headers ===")
+    for idx, col in enumerate(grants.columns, start=1):
+        print(f"{idx:>2}. {col!r}")
+    print("=== Contacts file headers ===")
+    for idx, col in enumerate(contacts.columns, start=1):
+        print(f"{idx:>2}. {col!r}")
+
+
 def resolve_contact_columns(df: pd.DataFrame) -> dict[str, str | None]:
     """
     Map logical fields to actual column names. File 2 may have blank headers
@@ -177,6 +187,44 @@ def _grant_cell(grants: pd.DataFrame, row_idx: int, *header_candidates: str) -> 
     return ""
 
 
+def _format_amount(value: str) -> str:
+    """Format numeric-looking values to 2 decimals; leave non-numeric as-is."""
+    text = str(value).strip()
+    if not text:
+        return ""
+    cleaned = text.replace("$", "").replace(",", "")
+    try:
+        num = float(cleaned)
+    except ValueError:
+        return text
+    return f"{num:.2f}"
+
+
+def _format_date_mmddyyyy(value: str) -> str:
+    """Normalize a single date value to mm/dd/yyyy when parseable."""
+    text = str(value).strip()
+    if not text:
+        return ""
+    dt = pd.to_datetime(text, errors="coerce")
+    if pd.isna(dt):
+        return text
+    return dt.strftime("%m/%d/%Y")
+
+
+def _format_report_date_multiline(value: str) -> str:
+    """
+    Preserve report date as multiline text.
+    Each line is normalized to mm/dd/yyyy only when parseable.
+    """
+    text = str(value).strip()
+    if not text:
+        return ""
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    formatted = [_format_date_mmddyyyy(line) for line in lines]
+    return ",\n".join(formatted)
+
+
+
 def combine_grant_report_notes(report_notes: str, notes: str) -> str:
     """Report Notes and Notes both map into Grant Report Notes (combined if both set)."""
     parts = [x for x in (report_notes, notes) if x]
@@ -205,13 +253,13 @@ def merge_workbooks(grants: pd.DataFrame, contacts: pd.DataFrame) -> pd.DataFram
         grant_block = {
             "Company Name": _grant_cell(grants, gi, "funder"),
             "Grant Purpose": _grant_cell(grants, gi, "purpose"),
-            "Ask Amount": _grant_cell(grants, gi, "amount"),
-            "Funded Amount": _grant_cell(grants, gi, "received"),
-            "Grant Remaining": _grant_cell(grants, gi, "remaining"),
-            "Grant Award Date": _grant_cell(grants, gi, "award date"),
-            "Funded Date": _grant_cell(grants, gi, "grant start date"),
-            "Close Date": _grant_cell(grants, gi, "grant end date"),
-            "Grant Report Date": _grant_cell(grants, gi, "report date"),
+            "Ask Amount": _format_amount(_grant_cell(grants, gi, "amount")),
+            "Funded Amount": _format_amount(_grant_cell(grants, gi, "received")),
+            "Grant Remaining": _format_amount(_grant_cell(grants, gi, "remaining")),
+            "Grant Award Date": _format_date_mmddyyyy(_grant_cell(grants, gi, "award date")),
+            "Funded Date": _format_date_mmddyyyy(_grant_cell(grants, gi, "grant start date")),
+            "Close Date": _format_date_mmddyyyy(_grant_cell(grants, gi, "grant end date")),
+            "Grant Report Date": _format_report_date_multiline(_grant_cell(grants, gi, "report date")),
             "Grant Report Notes": combine_grant_report_notes(report_notes_val, notes_val),
             "Grant Note": "",
         }
@@ -260,6 +308,11 @@ def main() -> int:
     p.add_argument("grants_xlsx", type=Path, help="Input file 1 (grants: Funder, Purpose, Amount, …)")
     p.add_argument("contacts_xlsx", type=Path, help="Input file 2 (contacts: First Name, Foundation, …)")
     p.add_argument(
+        "--debug-headers",
+        action="store_true",
+        help="Print all detected headers from both input files before merging.",
+    )
+    p.add_argument(
         "-o",
         "--output",
         type=Path,
@@ -277,6 +330,8 @@ def main() -> int:
 
     grants = load_grants(args.grants_xlsx)
     contacts = load_contacts(args.contacts_xlsx)
+    if args.debug_headers:
+        print_headers(grants, contacts)
     merged = merge_workbooks(grants, contacts)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     merged.to_excel(args.output, index=False, engine="openpyxl")
